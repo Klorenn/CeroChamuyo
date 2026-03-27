@@ -1,295 +1,182 @@
-# CeroChamuyo Contract 🍷
+# CeroChamuyo
 
-Contrato inteligente Soroban para gestión de reseñas y ranking de vinos en Stellar.
+La verdad del vino, en la blockchain.
 
-[![Stellar Expert](https://img.shields.io/badge/Stellar.Expert-Verify-blue)](https://stellar.expert/explorer/testnet/contract/CAGKEEG45CJPNLQ4O5QWLAGCPYDZLR7LOF2PYE7MDK4SFIQR464Z2XPW)
-[![Stellar Network](https://img.shields.io/badge/Stellar-Testnet-purple)](https://stellar.org)
-[![Soroban SDK](https://img.shields.io/badge/Soroban-SDK-orange)](https://soroban.stellar.org)
+Reseñas de vinos mendocinos auditadas por IA. Inmutabilidad garantizada por Stellar. Sin chamuyo, solo verdad.
 
 ---
 
-## 📋 Descripción
+## Descripcion
 
-**CeroChamuyoContract** es un contrato inteligente que permite:
-
-- Dejar reseñas de vinos con puntuación (1-5) y notas IA
-- Almacenar estadísticas on-chain (puntaje total y cantidad de reseñas)
-- Obtener datos para calcular rankings en tiempo real
-- Emitir eventos para lectura eficiente por el frontend
-
----
-
-## 🚀 Deploy en Producción
-
-| Red | Address del Contrato | Verificador |
-|-----|---------------------|-------------|
-| **Testnet** | `CAGKEEG45CJPNLQ4O5QWLAGCPYDZLR7LOF2PYE7MDK4SFIQR464Z2XPW` | [Ver en Stellar Expert](https://stellar.expert/explorer/testnet/contract/CAGKEEG45CJPNLQ4O5QWLAGCPYDZLR7LOF2PYE7MDK4SFIQR464Z2XPW) |
-
-### Transacciones de Deploy
-
-| Tipo | Hash | Explorer |
-|------|------|----------|
-| Install Wasm | `b6f1a7807fe58133594baa8b63ff83a712aabf8a6953390a8f8444aff3f56b64` | [Ver](https://stellar.expert/explorer/testnet/tx/b6f1a7807fe58133594baa8b63ff83a712aabf8a6953390a8f8444aff3f56b64) |
-| Deploy Contract | `2efef2ff98008620a81187293403274da9b3b375de32bb8430f7773361e5075f` | [Ver](https://stellar.expert/explorer/testnet/tx/2efef2ff98008620a81187293403274da9b3b375de32bb8430f7773361e5075f) |
-
-### Wasm Hash
-
-```
-38109224ea039a77635905375c9ee0401efdbec8dd3cc7cab108d67e6348496e
-```
+CeroChamuyo es una aplicacion descentralizada que permite dejar reseñas de vinos en la blockchain de Stellar. Cada resena es:
+- Analizada por IA para generar notas de sommelier
+- Firmada con tu wallet Freighter
+- Almacenada permanentemente en el smart contract Soroban
+- Verificable en cualquier momento via Stellar Expert
 
 ---
 
-## 📊 Ranking On-Chain (Datos Reales)
+## Stack Tecnico
 
-Estado actual del contrato verificado en Stellar Expert:
-
-| Rank | Vino | Total Score | Reviews | Promedio | Verificar |
-|------|------|-------------|---------|----------|-----------|
-| 1 | Catena Zapata Malbec Argentino | 9 | 2 | 4.5 | [Ver](https://stellar.expert/explorer/testnet/contract/CAGKEEG45CJPNLQ4O5QWLAGCPYDZLR7LOF2PYE7MDK4SFIQR464Z2XPW) |
-| 2 | Vega Sicilia Único | 5 | 1 | 5.0 | [Ver](https://stellar.expert/explorer/testnet/tx/919e0df02e114d05bc27eb7646721a87927e05548d41815c574562a7e5877c0e) |
-| 3 | Château Margaux | 5 | 1 | 5.0 | [Ver](https://stellar.expert/explorer/testnet/tx/05ea0740facd8afa40a718a64f81f910b03cc05ccf38f3f21089e3c9807d5f23) |
-| 4 | Penfolds Grange | 5 | 1 | 5.0 | [Ver](https://stellar.expert/explorer/testnet/tx/33daf7461d81413d2533a6111152055305a206cbf8ef577aeb2cbdffc1edcedf) |
-| 5 | Antinori Tignanello | 5 | 1 | 5.0 | [Ver](https://stellar.expert/explorer/testnet/tx/20cc94d976937084863a5a8f3f75d74907c8e9f57c68671eb902f22f2ddca89d) |
-| 6 | Dom Pérignon Vintage | 5 | 1 | 5.0 | [Ver](https://stellar.expert/explorer/testnet/tx/eb0ab4606e52f596aed4f204cacffd7ff189c4cddc45b76582bd8b0beef7e95d) |
-
-### Reseñas On-Chain Verificables
-
-| Vino | Score | Notas IA | TX Hash |
-|------|-------|----------|---------|
-| Catena Zapata (1ª) | ⭐⭐⭐⭐⭐ | "Excelente Malbec con notas de ciruela negra, violetas y un toque de roble francés..." | [af3419...](https://stellar.expert/explorer/testnet/tx/af341992cb6c0147e4b119aa5325035450b253be5a43a603a0c09aa5417d3a81) |
-| Catena Zapata (2ª) | ⭐⭐⭐⭐ | "Muy buen Malbec, fruta roja intensa y especias..." | [4b5344...](https://stellar.expert/explorer/testnet/tx/4b534419f49cb2a8f6f6237a76856f299913a8d83d661937faa1c8b78519cb0f) |
-| Vega Sicilia Único | ⭐⭐⭐⭐⭐ | "Obra maestra de Ribera del Duero. Complejidad extraordinaria..." | [919e0d...](https://stellar.expert/explorer/testnet/tx/919e0df02e114d05bc27eb7646721a87927e05548d41815c574562a7e5877c0e) |
-| Château Margaux | ⭐⭐⭐⭐⭐ | "Elegancia pura con aromas de rosas, cassis y especias..." | [05ea07...](https://stellar.expert/explorer/testnet/tx/05ea0740facd8afa40a718a64f81f910b03cc05ccf38f3f21089e3c9807d5f23) |
-| Penfolds Grange | ⭐⭐⭐⭐⭐ | "El ícono australiano. Shiraz potente con chocolate negro..." | [33daf7...](https://stellar.expert/explorer/testnet/tx/33daf7461d81413d2533a6111152055305a206cbf8ef577aeb2cbdffc1edcedf) |
-| Tignanello | ⭐⭐⭐⭐⭐ | "Super toscano clásico. Sangiovese vibrante con cereza..." | [20cc94...](https://stellar.expert/explorer/testnet/tx/20cc94d976937084863a5a8f3f75d74907c8e9f57c68671eb902f22f2ddca89d) |
-| Dom Pérignon | ⭐⭐⭐⭐⭐ | "Champagne de guarda excepcional. Brioche, almendras tostadas..." | [eb0ab4...](https://stellar.expert/explorer/testnet/tx/eb0ab4606e52f596aed4f204cacffd7ff189c4cddc45b76582bd8b0beef7e95d) |
+- **Frontend**: Next.js 14, React, TypeScript, Tailwind CSS
+- **Smart Contract**: Soroban (Rust)
+- **Blockchain**: Stellar Testnet
+- **Wallet**: Freighter
 
 ---
 
-## 📐 Estructura de Datos
+## Smart Contract
 
-### WineStats
+### Informacion del Deploy
 
-```rust
-pub struct WineStats {
-    pub total_score: u32,      // Suma acumulada de todos los puntajes
-    pub review_count: u32,     // Cantidad total de reseñas recibidas
-}
-```
+| Red | Contract ID |
+|-----|------------|
+| Testnet | `CAGKEEG45CJPNLQ4O5QWLAGCPYDZLR7LOF2PYE7MDK4SFIQR464Z2XPW` |
 
-Cada vino tiene su propio `WineStats` almacenado en el storage persistente del contrato, mapeado por su `wine_id`.
+[Verificar en Stellar Expert](https://stellar.expert/explorer/testnet/contract/CAGKEEG45CJPNLQ4O5QWLAGCPYDZLR7LOF2PYE7MDK4SFIQR464Z2XPW)
 
----
+### Funciones
 
-## 🔧 Funciones del Contrato
+**dejar_resena(wine_id, score, ia_notes)**
+Deja una nueva resena para un vino con puntuacion de 1 a 5.
 
-### `dejar_resena`
-
-Deja una nueva reseña para un vino.
-
-```rust
-pub fn dejar_resena(
-    env: Env,
-    wine_id: u32,
-    score: u32,
-    ia_notes: String,
-)
-```
-
-**Parámetros:**
-| Nombre | Tipo | Descripción |
-|--------|------|-------------|
-| `env` | `Env` | Entorno de ejecución de Soroban |
-| `wine_id` | `u32` | Identificador único del vino |
-| `score` | `u32` | Puntaje de 1 a 5 |
-| `ia_notes` | `String` | Notas generadas por IA |
-
-**Validaciones:**
-- El `score` debe estar entre 1 y 5 (inclusive). Si no, la transacción hace **panic**.
-
-**Eventos emitidos:**
-```rust
-// Topic: (Symbol("stats"), Symbol("resena"))
-// Data: (wine_id: u32, score: u32, ia_notes: String)
-```
+**obtener_ranking(wine_id)**
+Retorna (total_score, review_count) para calcular promedios.
 
 ---
 
-### `obtener_ranking`
+## Vinos de Mendoza
 
-Obtiene las estadísticas de un vino (solo lectura).
+El sistema incluye 29 vinos mendocinos organizados en categorias:
 
-```rust
-pub fn obtener_ranking(env: Env, wine_id: u32) -> (u32, u32)
-```
+### Iconos y Alta Gama
+1. Nicolas Catena Zapata - Valle de Uco
+2. Finca Piedra Infinita - Paraje Altamira
+3. Gran Enemigo Gualtallary - Gualtallary
+4. Vina Cobos Chanares - Valle de Uco
+5. Cheval des Andes - Las Compuertas
+6. Felipe Rutini - Valle de Uco
 
-**Retorna:**
-- Tupla `(total_score, review_count)`
+### Gama Media-Alta
+7. Luigi Bosca De Sangre - Lujan de Cuyo
+8. D.V. Catena - Valle de Uco
+9. Numina - Valle de Uco
+10. Gran Dante - Lujan de Cuyo
+11. Bramare - Valle de Uco
+12. Lote 51 Malbec - Lujan de Cuyo
 
-**Cálculo del promedio:**
-```javascript
-const promedio = total_score / review_count;
-```
+### Clasicos y Best Sellers
+13. Trumpeter - Valle de Uco
+14. Terrazas Reserva Malbec - Valle de Uco
+15. Terrazas Reserva Chardonnay - Valle de Uco
+16. Alamos Malbec - Mendoza
+17. Nicasia Red Blend - Altamira
+18. Septima Obra - Agrelo
+19. El Esteco Don David Cabernet Sauvignon - Mendoza
 
----
+### Blancos y Rosados
+20. White Bones Chardonnay - Gualtallary
+21. White Stones Chardonnay - Gualtallary
+22. Zuccardi Poligonos Verdejo - Valle de Uco
+23. Zuccardi Poligonos Semillon - Valle de Uco
+24. Lagarde Goes Pink - Lujan de Cuyo
+25. Susana Balbo Signature White Blend - Valle de Uco
 
-## 🧪 Uso desde el Frontend
-
-### Ejemplo con @stellar/freighter
-
-```javascript
-import { Contract, SorobanRpc, Address } from '@stellar/stellar-sdk';
-
-const CONTRACT_ID = 'CAGKEEG45CJPNLQ4O5QWLAGCPYDZLR7LOF2PYE7MDK4SFIQR464Z2XPW';
-const NETWORK = 'testnet';
-
-// Inicializar
-const server = new SorobanRpc.Server('https://soroban-test.stellar.org', {
-  networkPassphrase: SorobanRpc.Networks.TESTNET
-});
-const contract = new Contract(CONTRACT_ID);
-
-// Obtener ranking de un vino
-async function getWineRanking(wineId) {
-  const result = await server.simulateTransaction(
-    contract.call('obtener_ranking', wineId)
-  );
-
-  const [totalScore, reviewCount] = result.result.retval;
-  const average = reviewCount > 0 ? totalScore / reviewCount : 0;
-
-  return { totalScore, reviewCount, average };
-}
-
-// Dejar una reseña
-async function submitReview(wineId, score, iaNotes, wallet) {
-  const tx = await contract.call(
-    'dejar_resena',
-    wineId,
-    score,
-    iaNotes
-  );
-
-  const prepared = await server.prepareTransaction(tx);
-  const signed = await wallet.signTransaction(prepared);
-  const result = await server.sendTransaction(signed);
-
-  return result;
-}
-
-// Escuchar eventos de reseñas
-async function getReviewEvents(wineId) {
-  const events = await server.getEvents({
-    startLedger: 1,
-    filters: [{
-      type: 'contract',
-      contractIds: [CONTRACT_ID]
-    }]
-  });
-
-  return events.filter(e =>
-    e.topic.some(t => t.switch() === stellar.xdr.ScValType.scvSymbol &&
-                       t.sym().toString('utf8') === 'resena')
-  );
-}
-```
+### Espumantes
+26. Chandon Extra Brut - Mendoza
+27. Chandon Methode Traditionnelle Extra Brut - Mendoza
+28. Alyda Van Dulken - Valle de Uco
+29. Cruzat Rose - Mendoza
 
 ---
 
-## 📊 Dataset de Vinos Reales
+## Como Usar
 
-El contrato usa IDs numéricos para vinos reales. Aquí está el mapeo:
+### 1. Conectar Wallet
 
-| Wine ID | Vino | Región | País | Uva |
-|---------|------|--------|------|-----|
-| 1 | **Catena Zapata Malbec Argentino** | Mendoza | 🇦🇷 Argentina | Malbec |
-| 2 | **Vega Sicilia Único** | Ribera del Duero | 🇪🇸 España | Tempranillo, Cabernet Sauvignon |
-| 3 | **Opus One** | Napa Valley | 🇺🇸 USA | Cabernet Sauvignon blend |
-| 4 | **Château Margaux** | Bordeaux | 🇫🇷 Francia | Cabernet Sauvignon, Merlot |
-| 5 | **Penfolds Grange** | South Australia | 🇦🇺 Australia | Shiraz |
-| 6 | **Antinori Tignanello** | Toscana | 🇮🇹 Italia | Sangiovese, Cabernet |
-| 7 | **Cloudy Bay Sauvignon Blanc** | Marlborough | 🇳🇿 Nueva Zelanda | Sauvignon Blanc |
-| 8 | **Dom Pérignon Vintage** | Champagne | 🇫🇷 Francia | Chardonnay, Pinot Noir |
-| 9 | **Krug Grande Cuvée** | Champagne | 🇫🇷 Francia | Chardonnay, Pinot Noir, Pinot Meunier |
-| 10 | **Robert Mondavi Reserve Cabernet** | Napa Valley | 🇺🇸 USA | Cabernet Sauvignon |
+Instala la extension [Freighter](https://freighter.app/) y crea una wallet en Testnet.
 
-### Puntuaciones de Referencia (para testing)
+### 2. Obtener XLM de Testnet
 
-Estas puntuaciones son de referencia basadas en críticos reconocidos:
+Visita [Stellar Testnet Friendbot](https://friendbot.stellar.org/) para recibir XLM de prueba.
 
-| Wine ID | Puntuación Crítico | Fuente |
-|---------|-------------------|--------|
-| 1 | 97 | Robert Parker |
-| 2 | 99 | James Suckling |
-| 3 | 95 | Wine Spectator |
-| 4 | 100 | Decanter |
-| 5 | 98 | James Halliday |
-| 6 | 96 | Wine Enthusiast |
-| 7 | 91 | Tim Atkin |
-| 8 | 98 | Wine Advocate |
-| 9 | 99 | Guia Peñín |
-| 10 | 94 | Jeb Dunnuck |
+### 3. Dejar una Resena
+
+1. Selecciona el vino del dropdown
+2. Dale una puntuacion con las estrellas
+3. Escribe tu opinion honesta
+4. Haz click en "Sellar en Stellar"
+5. Confirma la transaccion en Freighter
+
+### 4. Verificar en Blockchain
+
+Una vez enviada, puedes verificar tu resena en [Stellar Expert](https://stellar.expert/explorer/testnet/).
 
 ---
 
-## 🛠️ Desarrollo Local
+## Desarrollo Local
 
-### Prerrequisitos
+### Requisitos
 
-- [Rust](https://rustup.rs/) (1.70+)
-- [Stellar CLI](https://github.com/StellarCN/py-stellar-base)
-- Cargo
+- Node.js 20+
+- Rust 1.70+
+- npm o pnpm
 
-### Compilar
+### Instalar dependencias
 
 ```bash
-# Build estándar
-cargo build --release
-
-# Build con Stellar CLI (recomendado)
-stellar contract build
+cd "Cero Chamuyo"
+npm install
 ```
 
-### Ejecutar Tests
+### Iniciar dev server
+
+```bash
+npm run dev
+```
+
+La app estara disponible en http://localhost:3000
+
+### Compilar smart contract
+
+```bash
+cargo build --release
+```
+
+### Ejecutar tests
 
 ```bash
 cargo test
 ```
 
-### Deploy Local
+---
 
-```bash
-# 1. Configurar red y cuenta
-stellar network add testnet \
-  --rpc-url https://soroban-test.stellar.org \
-  --network-passphrase "Test SDF Network ; September 2015"
+## Estructura del Proyecto
 
-stellar keys generate testnet-user
-
-# 2. Deploy
-stellar contract deploy \
-  --network testnet \
-  --source-account testnet-user \
-  --wasm target/wasm32v1-none/release/cerochamuyo_contract.wasm
+```
+CeroChamuyo/
+├── Cero Chamuyo/          # Frontend Next.js
+│   ├── app/              # Paginas y layouts
+│   ├── components/        # Componentes React
+│   ├── hooks/            # Custom hooks (useFreighter)
+│   └── lib/              # Utilidades y SDK
+├── src/                   # Smart contract Rust
+│   └── lib.rs            # Logica del contrato
+├── wines_data.json        # Base de datos de vinos
+└── Cargo.toml            # Configuracion Rust
 ```
 
 ---
 
-## 📜 Licencia
+## Licencia
 
 MIT License
 
 ---
 
-## 🔗 Enlaces
+## Enlaces
 
-- [Stellar Expert - Contrato Verificado](https://stellar.expert/explorer/testnet/contract/CAGKEEG45CJPNLQ4O5QWLAGCPYDZLR7LOF2PYE7MDK4SFIQR464Z2XPW)
-- [Soroban Documentation](https://soroban.stellar.org/docs)
+- [Stellar Expert - Smart Contract](https://stellar.expert/explorer/testnet/contract/CAGKEEG45CJPNLQ4O5QWLAGCPYDZLR7LOF2PYE7MDK4SFIQR464Z2XPW)
+- [Documentacion Soroban](https://soroban.stellar.org/docs)
 - [Stellar Developers](https://developers.stellar.org)
-
----
-
-<div align="center">
-  <strong>CeroChamuyo Contract</strong> | Built with Soroban SDK 🍷
-</div>
+- [Freighter Wallet](https://freighter.app/)
