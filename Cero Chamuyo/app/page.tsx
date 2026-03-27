@@ -12,11 +12,13 @@ import {
 import { useFreighter } from "@/hooks/useFreighter"
 import { config } from "@/lib/stellar"
 import { buildLeaveReviewTx, submitSignedTransaction, formatAddress, getAllWineStats, getRecentReviews } from "@/lib/contract"
+import { analyzeWithAI } from "@/lib/gemini"
 
 interface OnChainReview {
   wine_id: number;
   score: number;
   ia_notes: string;
+  client_review: string;
   tx_hash: string;
   ledger: number;
 }
@@ -79,6 +81,30 @@ const winesData: WineData[] = [
 
 function formatTxHash(hash: string): string {
   return `${hash.slice(0, 6)}...${hash.slice(-4)}`;
+}
+
+const STORAGE_KEY_REVIEWS = "cerrochamuyo_reviews";
+
+function loadReviewsFromStorage(): OnChainReview[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY_REVIEWS);
+    if (stored) {
+      return JSON.parse(stored);
+    }
+  } catch (e) {
+    console.warn("Could not load reviews from localStorage");
+  }
+  return [];
+}
+
+function saveReviewsToStorage(reviews: OnChainReview[]): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(STORAGE_KEY_REVIEWS, JSON.stringify(reviews));
+  } catch (e) {
+    console.warn("Could not save reviews to localStorage");
+  }
 }
 
 const wineGlasses = [
@@ -147,12 +173,13 @@ export default function HomePage() {
   const [score, setScore] = useState<number>(5)
   const [currentWineIndex, setCurrentWineIndex] = useState(0)
   const [headerVisible, setHeaderVisible] = useState(false)
-  const [txStatus, setTxStatus] = useState<"idle" | "building" | "signing" | "submitting" | "success" | "error">("idle")
+  const [txStatus, setTxStatus] = useState<"idle" | "building" | "analyzing" | "signing" | "submitting" | "success" | "error">("idle")
   const [txHash, setTxHash] = useState<string | null>(null)
   const [txError, setTxError] = useState<string | null>(null)
   const [wineStats, setWineStats] = useState<Map<number, { totalScore: number; reviewCount: number; average: number }>>(new Map())
   const [recentReviews, setRecentReviews] = useState<OnChainReview[]>([])
   const [loadingData, setLoadingData] = useState(false)
+  const [rankingView, setRankingView] = useState<"muro" | "ranking">("muro")
 
   useEffect(() => {
     setHeaderVisible(true)
@@ -165,14 +192,41 @@ export default function HomePage() {
   const loadOnChainData = useCallback(async () => {
     setLoadingData(true);
     try {
+      const storedReviews = loadReviewsFromStorage();
+      setRecentReviews(storedReviews);
+      
       const wineIds = winesData.map(w => w.wine_id);
       const stats = await getAllWineStats(wineIds);
       setWineStats(stats);
       
-      const reviews = await getRecentReviews(10);
-      setRecentReviews(reviews);
+      if (storedReviews.length > 0) {
+        const localStats = new Map<number, { totalScore: number; reviewCount: number; average: number }>();
+        storedReviews.forEach(r => {
+          const current = localStats.get(r.wine_id) || { totalScore: 0, reviewCount: 0, average: 0 };
+          localStats.set(r.wine_id, {
+            totalScore: current.totalScore + r.score,
+            reviewCount: current.reviewCount + 1,
+            average: 0,
+          });
+        });
+        localStats.forEach((val, key) => {
+          val.average = val.totalScore / val.reviewCount;
+          localStats.set(key, val);
+        });
+        
+        const mergedStats = new Map(wineStats);
+        localStats.forEach((val, key) => {
+          const existing = mergedStats.get(key);
+          if (!existing || existing.reviewCount < val.reviewCount) {
+            mergedStats.set(key, val);
+          }
+        });
+        setWineStats(mergedStats);
+      }
     } catch (error) {
       console.error("Error loading on-chain data:", error);
+      const storedReviews = loadReviewsFromStorage();
+      setRecentReviews(storedReviews);
     }
     setLoadingData(false);
   }, []);
@@ -193,42 +247,6 @@ export default function HomePage() {
     }
   }
 
-  const analyzeWithAI = useCallback((text: string): string => {
-    const lowerText = text.toLowerCase();
-    let analysis = "";
-    
-    if (lowerText.includes("excelente") || lowerText.includes("increible") || lowerText.includes("espectacular")) {
-      analysis = "Vino de calidad excepcional con caracter distintivo. ";
-    } else if (lowerText.includes("bueno") || lowerText.includes("muy bueno") || lowerText.includes("recomendable")) {
-      analysis = "Vino correcto con buenas caracteristicas. ";
-    } else if (lowerText.includes("regular") || lowerText.includes("normal") || lowerText.includes("aceptable")) {
-      analysis = "Vino con perfil basico pero agradable. ";
-    } else if (lowerText.includes("malo") || lowerText.includes("terrible") || lowerText.includes("desilusionante")) {
-      analysis = "Vino que no cumple expectativas. ";
-    }
-    
-    if (lowerText.includes("fruta") || lowerText.includes("aromas") || lowerText.includes("sabores")) {
-      analysis += "Presencia notable de frutas y complejidad aromatica. ";
-    }
-    if (lowerText.includes("tanino") || lowerText.includes("taninos") || lowerText.includes("astringente")) {
-      analysis += "Estructura tannica marcada. ";
-    }
-    if (lowerText.includes("acidez") || lowerText.includes("acido") || lowerText.includes("fresco")) {
-      analysis += "Acidez bien equilibrada. ";
-    }
-    if (lowerText.includes("roble") || lowerText.includes("barrrica") || lowerText.includes("vanilla") || lowerText.includes("tostado")) {
-      analysis += "Influencia de madera bien integrada. ";
-    }
-    
-    if (!analysis) {
-      analysis = "Vino con identidad propia. ";
-    }
-    
-    analysis += `"${text.slice(0, 50)}${text.length > 50 ? "..." : ""}"`;
-    
-    return analysis;
-  }, []);
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!review.trim() || !connected || !address) return;
@@ -238,7 +256,8 @@ export default function HomePage() {
     setTxHash(null);
 
     try {
-      const iaNotes = analyzeWithAI(review);
+      setTxStatus("analyzing");
+      const iaNotes = await analyzeWithAI(review);
       setTxStatus("signing");
       
       const xdr = await buildLeaveReviewTx(address, selectedWine, score, iaNotes);
@@ -249,11 +268,36 @@ export default function HomePage() {
       
       setTxHash(result.stellarExpertUrl);
       setTxStatus("success");
+      
+      const newReview: OnChainReview = {
+        wine_id: selectedWine,
+        score,
+        ia_notes: iaNotes,
+        client_review: review,
+        tx_hash: result.txHash,
+        ledger: Date.now(),
+      };
+      
+      const updatedReviews = [newReview, ...recentReviews];
+      setRecentReviews(updatedReviews);
+      saveReviewsToStorage(updatedReviews);
+      
+      setWineStats(prev => {
+        const newStats = new Map(prev);
+        const currentStats = newStats.get(selectedWine) || { totalScore: 0, reviewCount: 0, average: 0 };
+        const newReviewCount = currentStats.reviewCount + 1;
+        const newTotalScore = currentStats.totalScore + score;
+        newStats.set(selectedWine, {
+          totalScore: newTotalScore,
+          reviewCount: newReviewCount,
+          average: newTotalScore / newReviewCount,
+        });
+        return newStats;
+      });
+      
       setReview("");
       setScore(5);
       await checkConnection();
-      
-      await loadOnChainData();
       
       setTimeout(() => {
         setTxStatus("idle");
@@ -271,12 +315,20 @@ export default function HomePage() {
     document.getElementById(id)?.scrollIntoView({ behavior: "smooth" })
   }
 
+  const scrollToRanking = () => {
+    setRankingView("ranking");
+    setTimeout(() => {
+      document.getElementById("muro")?.scrollIntoView({ behavior: "smooth" });
+    }, 100);
+  }
+
   const getStatusMessage = () => {
     switch (txStatus) {
       case "building": return "Construyendo transaccion...";
+      case "analyzing": return "Analizando con IA...";
       case "signing": return "Esperando firma en Freighter...";
       case "submitting": return "Enviando a la red Stellar...";
-      case "success": return "Reseña sellada exitosamente!";
+      case "success": return "Resena sellada exitosamente!";
       case "error": return txError || "Error en la transaccion";
       default: return null;
     }
@@ -321,7 +373,7 @@ export default function HomePage() {
               El Muro
             </button>
             <button 
-              onClick={() => scrollToSection("ranking")}
+              onClick={scrollToRanking}
               className="text-sm text-muted-foreground hover:text-foreground transition-colors"
             >
               Ranking
@@ -651,8 +703,11 @@ export default function HomePage() {
                             <span className="text-xs text-muted-foreground/70">{wine.winery} - {wine.region}</span>
                           </div>
                         </div>
-                        <p className="text-sm text-muted-foreground leading-relaxed mb-4 pl-7">
-                          {review.ia_notes}
+                        <p className="text-sm text-muted-foreground leading-relaxed mb-2 pl-7">
+                          <span className="font-medium">{review.ia_notes}</span>
+                        </p>
+                        <p className="text-sm text-foreground/70 italic leading-relaxed mb-4 pl-7">
+                          "{review.client_review}"
                         </p>
                         <div className="flex items-center justify-between pl-7">
                           <div className="flex items-center gap-1 text-sm text-foreground">
@@ -686,18 +741,37 @@ export default function HomePage() {
       {/* Section: El Muro On-Chain */}
       <section id="muro" className="px-6 py-24 md:px-12 lg:px-24 bg-muted/30">
         <AnimatedSection animation="fade-up">
-          <div className="text-center mb-16">
+          <div className="text-center mb-8">
             <span className="text-xs uppercase tracking-widest text-muted-foreground">02</span>
             <h2 className="font-serif text-4xl md:text-5xl text-foreground mt-4 mb-4">
-              El Muro On-Chain
+              On-Chain
             </h2>
-            <p className="text-muted-foreground max-w-lg mx-auto">
-              Reseñas inmutables verificadas por IA. El contraste entre lo que decís y lo que el sommelier detecta.
-            </p>
+          </div>
+          <div className="flex items-center justify-center gap-2 mb-12">
+            <button
+              onClick={() => setRankingView("muro")}
+              className={`px-6 py-2 text-sm transition-all ${
+                rankingView === "muro"
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-transparent text-muted-foreground hover:text-foreground border border-border"
+              }`}
+            >
+              El Muro
+            </button>
+            <button
+              onClick={() => setRankingView("ranking")}
+              className={`px-6 py-2 text-sm transition-all ${
+                rankingView === "ranking"
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-transparent text-muted-foreground hover:text-foreground border border-border"
+              }`}
+            >
+              Ranking
+            </button>
           </div>
         </AnimatedSection>
         
-        <div className="max-w-4xl mx-auto">
+        <div className={rankingView === "muro" ? "max-w-4xl mx-auto" : "max-w-2xl mx-auto"}>
           {loadingData ? (
             <div className="py-16 text-center">
               <Loader2 className="w-8 h-8 animate-spin mx-auto text-muted-foreground" />
@@ -779,9 +853,14 @@ export default function HomePage() {
                                 </a>
                               </div>
                             </div>
-                            <p className="text-sm text-foreground leading-relaxed">
-                              {review.ia_notes}
-                            </p>
+                            <div className="p-4 bg-background/50 rounded-sm mb-3">
+                              <p className="text-sm font-medium text-foreground">
+                                {review.ia_notes}
+                              </p>
+                              <p className="text-sm text-muted-foreground italic mt-2">
+                                "{review.client_review}"
+                              </p>
+                            </div>
                           </div>
                         </div>
                       ))}
@@ -794,114 +873,6 @@ export default function HomePage() {
                   </AnimatedSection>
                 );
               });
-            })()
-          )}
-        </div>
-      </section>
-
-      {/* Section: Leaderboard */}
-      <section id="ranking" className="px-6 py-24 md:px-12 lg:px-24">
-        <AnimatedSection animation="fade-up">
-          <div className="text-center mb-16">
-            <span className="text-xs uppercase tracking-widest text-muted-foreground">03</span>
-            <h2 className="font-serif text-4xl md:text-5xl text-foreground mt-4 mb-4">
-              Ranking Sin Chamuyo
-            </h2>
-            <p className="text-xs uppercase tracking-widest text-muted-foreground">
-              Ranking Inmutable
-            </p>
-          </div>
-        </AnimatedSection>
-        
-        <div className="max-w-2xl mx-auto">
-          {loadingData ? (
-            <div className="py-16 text-center">
-              <Loader2 className="w-8 h-8 animate-spin mx-auto text-muted-foreground" />
-              <p className="text-muted-foreground text-sm mt-3">Cargando ranking...</p>
-            </div>
-          ) : wineStats.size === 0 ? (
-            <div className="py-16 text-center">
-              <p className="text-muted-foreground">
-                No hay rankings disponibles.
-              </p>
-              <p className="text-muted-foreground/60 text-sm mt-2">
-                El ranking se genera automaticamente con las resenas on-chain.
-              </p>
-            </div>
-          ) : (
-            (() => {
-              const leaderboardData = Array.from(wineStats.entries())
-                .map(([wineId, stats]) => {
-                  const wine = winesData.find(w => w.wine_id === wineId);
-                  return wine ? { wineId, wine, stats, score: stats.average } : null;
-                })
-                .filter((item): item is { wineId: number; wine: WineData; stats: { totalScore: number; reviewCount: number; average: number }; score: number } => item !== null)
-                .sort((a, b) => b.score - a.score)
-                .map((item, index) => ({ rank: index + 1, ...item }));
-              
-              return (
-                <>
-                  <div className="border-y border-border">
-                    <div className="hidden md:grid md:grid-cols-[56px_1.8fr_1fr_0.8fr_0.8fr] gap-4 px-4 py-4 text-[11px] uppercase tracking-[0.24em] text-muted-foreground/80 border-b border-border">
-                      <span>#</span>
-                      <span>Vino</span>
-                      <span>Region</span>
-                      <span className="text-right">Score</span>
-                      <span className="text-right">Reviews</span>
-                    </div>
-
-                    {leaderboardData.map((item, index) => (
-                      <AnimatedSection
-                        key={item.wineId}
-                        animation="fade-up"
-                        delay={`delay-${(index + 1) * 100}`}
-                      >
-                        <article
-                          className={`grid grid-cols-[44px_1fr_auto] md:grid-cols-[56px_1.8fr_1fr_0.8fr_0.8fr] gap-4 items-center px-4 py-6 border-b border-border/80 transition-colors hover:bg-muted/20 ${
-                            item.rank === 1 ? "bg-muted/25" : ""
-                          }`}
-                        >
-                          <span
-                            className={`font-serif leading-none ${
-                              item.rank === 1 ? "text-5xl text-[#722F37]" : "text-4xl text-muted-foreground/45"
-                            }`}
-                          >
-                            {item.rank}
-                          </span>
-
-                          <div className="min-w-0">
-                            <h4 className={`font-serif truncate ${item.rank === 1 ? "text-4xl text-[#722F37]" : "text-3xl text-foreground"}`}>
-                              {item.wine.name}
-                            </h4>
-                            <p className="mt-1 text-[11px] uppercase tracking-[0.24em] text-primary/70">
-                              {item.wine.winery}
-                            </p>
-                          </div>
-
-                          <p className="hidden md:block text-lg text-foreground/80 truncate">{item.wine.region}</p>
-
-                          <div className="text-right">
-                            <p className="font-serif text-4xl text-foreground leading-none">{item.score.toFixed(1)}</p>
-                            <p className="text-xs text-muted-foreground mt-1">/5</p>
-                          </div>
-
-                          <div className="text-right">
-                            <p className="text-3xl font-serif text-foreground leading-none">{item.stats.reviewCount}</p>
-                            <p className="text-xs text-muted-foreground mt-1">resenas</p>
-                          </div>
-                        </article>
-                      </AnimatedSection>
-                    ))}
-                  </div>
-
-                  <AnimatedSection animation="fade-in" delay="delay-600">
-                    <div className="mt-8 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs uppercase tracking-[0.18em] text-muted-foreground/70">
-                      <p>Puntajes auditados on-chain</p>
-                      <p>{wineStats.size} vino{wineStats.size !== 1 ? "s" : ""} con resenas</p>
-                    </div>
-                  </AnimatedSection>
-                </>
-              );
             })()
           )}
         </div>
@@ -950,7 +921,7 @@ export default function HomePage() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => scrollToSection("ranking")}
+                      onClick={scrollToRanking}
                       className="text-muted-foreground hover:text-foreground transition-colors text-left"
                     >
                       Ranking
@@ -999,3 +970,4 @@ export default function HomePage() {
     </div>
   )
 }
+

@@ -137,7 +137,7 @@ export async function getAllWineStats(wineIds: number[]): Promise<Map<number, { 
 export async function getRecentReviews(limit: number = 10): Promise<OnChainReview[]> {
   try {
     const eventsResponse = await rpc.getEvents({
-      startLedger: 1,
+      startLedger: 1720000,
       filters: [
         {
           type: "contract",
@@ -149,43 +149,51 @@ export async function getRecentReviews(limit: number = 10): Promise<OnChainRevie
     const reviews: OnChainReview[] = [];
     
     for (const event of eventsResponse.events) {
-      if (event.type === "contract" && event.ledger) {
-        const topics = event.topic;
+      if (event.type !== "contract") continue;
+      
+      const topics = event.topic;
+      if (!topics || topics.length < 3) continue;
+      
+      try {
+        const topic2Str = topics[1].toString();
+        if (topic2Str !== "resena") continue;
         
-        if (topics.length >= 3) {
-          const topic2 = topics[1]?.value()?.toString();
-          const topic3 = topics[2]?.value()?.toString();
-          
-          if (topic2 === "resena") {
-            const data = event.contractId ? event.data.value() : null;
-            
-            if (data && "vec" in data) {
-              const values = data.vec() || [];
-              
-              if (values.length >= 3) {
-                const wineId = Number(StellarSdk.scValToNative(values[0]));
-                const score = Number(StellarSdk.scValToNative(values[1]));
-                const iaNotes = StellarSdk.scValToNative(values[2]) as string;
-                
-                reviews.push({
-                  wine_id: wineId,
-                  score,
-                  ia_notes: iaNotes,
-                  tx_hash: event.id || "",
-                  ledger: event.ledger,
-                  timestamp: event.ledgerTimestamp || 0,
-                });
-              }
-            }
-          }
-        }
+        const data = event.data;
+        if (!data) continue;
+        
+        const dataObj = data.value();
+        if (!dataObj || typeof dataObj !== "object") continue;
+        
+        const struct = dataObj as { vec?: () => StellarSdk.xdr.ScVal[] };
+        if (!struct.vec) continue;
+        
+        const values = struct.vec();
+        if (!values || values.length < 3) continue;
+        
+        const wineId = parseInt(StellarSdk.scValToNative(values[0]).toString(), 10);
+        const score = parseInt(StellarSdk.scValToNative(values[1]).toString(), 10);
+        const iaNotes = StellarSdk.scValToNative(values[2]) as string;
+        
+        if (isNaN(wineId) || isNaN(score)) continue;
+        
+        reviews.push({
+          wine_id: wineId,
+          score,
+          ia_notes: iaNotes,
+          tx_hash: event.id || event.transactionHash || "",
+          ledger: event.ledger || 0,
+          timestamp: event.ledgerTimestamp || 0,
+        });
+      } catch (parseError) {
+        console.warn("Error parsing event:", parseError);
+        continue;
       }
     }
 
     reviews.sort((a, b) => b.ledger - a.ledger);
     return reviews.slice(0, limit);
   } catch (error) {
-    console.error("Error fetching recent reviews:", error);
+    console.warn("Could not fetch events from RPC, using local state only:", error);
     return [];
   }
 }

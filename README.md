@@ -9,7 +9,7 @@ Reseñas de vinos mendocinos auditadas por IA. Inmutabilidad garantizada por Ste
 ## Descripcion
 
 CeroChamuyo es una aplicacion descentralizada que permite dejar reseñas de vinos en la blockchain de Stellar. Cada resena es:
-- Analizada por IA para generar notas de sommelier
+- Analizada por IA (Gemini) para clasificar al cliente
 - Firmada con tu wallet Freighter
 - Almacenada permanentemente en el smart contract Soroban
 - Verificable en cualquier momento via Stellar Expert
@@ -22,6 +22,7 @@ CeroChamuyo es una aplicacion descentralizada que permite dejar reseñas de vino
 - **Smart Contract**: Soroban (Rust)
 - **Blockchain**: Stellar Testnet
 - **Wallet**: Freighter
+- **IA**: Google Gemini - Analiza las reseñas para clasificar al cliente
 
 ---
 
