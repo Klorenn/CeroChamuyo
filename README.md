@@ -170,7 +170,7 @@ CeroChamuyo/
 
 ## Licencia
 
-MIT License
+[MIT License](LICENSE) - Creado por kl0ren en 2026
 
 ---
 
