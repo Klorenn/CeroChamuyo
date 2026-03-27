@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useRef, useCallback } from "react"
-import { CheckCircle, Wine, ExternalLink, Star, ChevronDown, Loader2, AlertCircle } from "lucide-react"
+import { CheckCircle, Wine, ExternalLink, Star, ChevronDown, Loader2, AlertCircle, RefreshCw } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   RedWineGlass,
@@ -11,28 +11,14 @@ import {
 } from "@/components/wine-glasses"
 import { useFreighter } from "@/hooks/useFreighter"
 import { config } from "@/lib/stellar"
-import { buildLeaveReviewTx, submitSignedTransaction, formatAddress } from "@/lib/contract"
-
-// Vinos de Mendoza - Datos reales de las principales regiones
-const wineRegions = [
-  { name: "Valle de Uco", subregions: ["Tupungato", "Tunuyan", "San Carlos"], description: "Vinos de altura con mucha acidez y color" },
-  { name: "Lujan de Cuyo", subregions: [], description: "La tierra del Malbec" },
-  { name: "Maipu", subregions: [], description: "Zona historica con bodegas familiares" },
-  { name: "San Rafael", subregions: ["General Alvear"], description: "Famosa por Chenin Blanc y varietales equilibrados" },
-]
-
-const wineVarieties = {
-  tintos: ["Malbec", "Cabernet Sauvignon", "Bonarda", "Cabernet Franc", "Syrah", "Merlot", "Tempranillo", "Pinot Noir", "Barbera"],
-  blancos: ["Chardonnay", "Torrontes", "Sauvignon Blanc", "Semillon", "Chenin Blanc"],
-  otros: ["Rosado de Malbec", "Rosado de Pinot Noir", "Espumante Metodo Tradicional", "Espumante Charmat"],
-}
+import { buildLeaveReviewTx, submitSignedTransaction, formatAddress, getAllWineStats, getRecentReviews } from "@/lib/contract"
 
 interface OnChainReview {
   wine_id: number;
   score: number;
   ia_notes: string;
   tx_hash: string;
-  stellar_expert_url: string;
+  ledger: number;
 }
 
 interface WineData {
@@ -58,8 +44,6 @@ interface OnChainReviewWithWine extends OnChainReview {
   wine_vintage: number | string;
   wine_winery: string;
 }
-
-const onChainReviewsData: OnChainReview[] = [];
 
 const winesData: WineData[] = [
   { wine_id: 1, name: "Nicolas Catena Zapata", vintage: 2020, region: "Valle de Uco", country: "Argentina", country_code: "AR", grapes: ["Cabernet Sauvignon", "Malbec"], type: "Red", category: "icon", winery: "Catena Zapata", reference_score: 96, reference_source: "Wine Advocate", on_chain_stats: null },
@@ -92,37 +76,6 @@ const winesData: WineData[] = [
   { wine_id: 28, name: "Alyda Van Dulken", vintage: 2018, region: "Valle de Uco", country: "Argentina", country_code: "AR", grapes: ["Chardonnay", "Pinot Noir"], type: "Sparkling", category: "sparkling", winery: "Salentein", reference_score: 92, reference_source: "Descorchados", on_chain_stats: null },
   { wine_id: 29, name: "Cruzat Rose", vintage: "NV", region: "Mendoza", country: "Argentina", country_code: "AR", grapes: ["Pinot Noir"], type: "Sparkling", category: "sparkling", winery: "Cruzat", reference_score: 88, reference_source: "Wine Enthusiast", on_chain_stats: null },
 ];
-
-function getWineReviews(wineId: number): OnChainReviewWithWine[] {
-  const wine = winesData.find(w => w.wine_id === wineId);
-  if (!wine) return [];
-  
-  return onChainReviewsData
-    .filter(r => r.wine_id === wineId)
-    .map(review => ({
-      ...review,
-      wine_name: wine.name,
-      wine_region: wine.region,
-      wine_variety: wine.grapes[0],
-      wine_vintage: wine.vintage,
-      wine_winery: wine.winery,
-    }));
-}
-
-function getWinesWithReviews(): WineData[] {
-  return winesData.filter(w => w.on_chain_stats !== null && w.on_chain_stats.review_count > 0);
-}
-
-function getLeaderboard(): { rank: number; wine: WineData; score: number }[] {
-  return winesData
-    .filter(w => w.on_chain_stats !== null && w.on_chain_stats.review_count > 0)
-    .sort((a, b) => b.on_chain_stats!.average - a.on_chain_stats!.average)
-    .map((wine, index) => ({
-      rank: index + 1,
-      wine,
-      score: wine.on_chain_stats!.average,
-    }));
-}
 
 function formatTxHash(hash: string): string {
   return `${hash.slice(0, 6)}...${hash.slice(-4)}`;
@@ -197,6 +150,9 @@ export default function HomePage() {
   const [txStatus, setTxStatus] = useState<"idle" | "building" | "signing" | "submitting" | "success" | "error">("idle")
   const [txHash, setTxHash] = useState<string | null>(null)
   const [txError, setTxError] = useState<string | null>(null)
+  const [wineStats, setWineStats] = useState<Map<number, { totalScore: number; reviewCount: number; average: number }>>(new Map())
+  const [recentReviews, setRecentReviews] = useState<OnChainReview[]>([])
+  const [loadingData, setLoadingData] = useState(false)
 
   useEffect(() => {
     setHeaderVisible(true)
@@ -205,6 +161,25 @@ export default function HomePage() {
     }, 3000)
     return () => clearInterval(interval)
   }, [])
+
+  const loadOnChainData = useCallback(async () => {
+    setLoadingData(true);
+    try {
+      const wineIds = winesData.map(w => w.wine_id);
+      const stats = await getAllWineStats(wineIds);
+      setWineStats(stats);
+      
+      const reviews = await getRecentReviews(10);
+      setRecentReviews(reviews);
+    } catch (error) {
+      console.error("Error loading on-chain data:", error);
+    }
+    setLoadingData(false);
+  }, []);
+
+  useEffect(() => {
+    loadOnChainData();
+  }, [loadOnChainData])
 
   const handleConnect = async () => {
     if (connected) {
@@ -278,6 +253,8 @@ export default function HomePage() {
       setScore(5);
       await checkConnection();
       
+      await loadOnChainData();
+      
       setTimeout(() => {
         setTxStatus("idle");
         setTxHash(null);
@@ -299,7 +276,7 @@ export default function HomePage() {
       case "building": return "Construyendo transaccion...";
       case "signing": return "Esperando firma en Freighter...";
       case "submitting": return "Enviando a la red Stellar...";
-      case "success": return "Resena sellada exitosamente!";
+      case "success": return "Reseña sellada exitosamente!";
       case "error": return txError || "Error en la transaccion";
       default: return null;
     }
@@ -397,20 +374,12 @@ export default function HomePage() {
         }}
       >
         <div className="flex flex-col lg:flex-row items-center justify-between gap-8 lg:gap-16">
-          {/* Wine Glass Carousel — inline size fallback if Tailwind/CSS fails to load */}
+          {/* Wine Glass Carousel */}
           <div
             className={`relative flex flex-col items-center order-2 lg:order-1 lg:ml-6 xl:ml-10 lg:mt-8 transition-all duration-1000 delay-300 ${headerVisible ? "opacity-100 translate-x-0" : "opacity-0 -translate-x-12"}`}
-            style={{ display: "flex", flexDirection: "column", alignItems: "center", maxWidth: "100%" }}
+            style={{ maxWidth: "100%" }}
           >
-            <div
-              className="hero-wine-glass-root relative w-64 h-80 md:w-80 md:h-[430px] lg:w-[420px] lg:h-[540px]"
-              style={{
-                width: "min(100%, 26.25rem)",
-                height: "min(33.75rem, 70vh)",
-                maxWidth: "100%",
-                position: "relative",
-              }}
-            >
+            <div className="hero-wine-glass-root relative w-64 h-80 md:w-80 md:h-[430px] lg:w-[420px] lg:h-[540px]">
               {wineGlasses.map((wine, index) => {
                 const GlassComponent = wine.component
                 return (
@@ -465,7 +434,7 @@ export default function HomePage() {
                 onClick={() => scrollToSection("escribir")}
                 className="bg-primary text-primary-foreground hover:bg-primary/90 px-8 py-3 text-sm font-medium tracking-wide"
               >
-                Escribir Resena
+                Escribir reseña
               </Button>
               <Button
                 variant="ghost"
@@ -490,7 +459,7 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* Section: Escribir Resena */}
+      {/* Section: Escribir reseña */}
       <section id="escribir" className="px-6 py-24 md:px-12 lg:px-24">
         <div className="border-t border-border pt-16">
           <AnimatedSection animation="fade-up">
@@ -500,7 +469,7 @@ export default function HomePage() {
                 Tu Opinion Cuenta
               </h2>
               <p className="text-muted-foreground max-w-lg mx-auto">
-                Escribe tu resena honesta y dejala sellada para siempre en la blockchain de Stellar.
+                Escribe tu reseña honesta y dejala sellada para siempre en la blockchain de Stellar.
               </p>
             </div>
           </AnimatedSection>
@@ -636,71 +605,79 @@ export default function HomePage() {
 
             {/* Recent Reviews */}
             <AnimatedSection animation="slide-right" delay="delay-300">
-              <h3 className="text-xs uppercase tracking-widest text-muted-foreground mb-8">
-                Resenas recientes on-chain
-              </h3>
-              {(() => {
-                const recentReviews = onChainReviewsData
-                  .map(r => getWineReviews(r.wine_id)[0])
-                  .filter((r, i, arr) => arr.findIndex(x => x.wine_id === r.wine_id) === i)
-                  .slice(0, 3);
-                
-                if (recentReviews.length === 0) {
-                  return (
-                    <div className="py-12 text-center">
-                      <p className="text-muted-foreground text-sm">
-                        Aun no hay reseñas on-chain.
-                      </p>
-                      <p className="text-muted-foreground/60 text-xs mt-2">
-                        Conecta tu wallet y se el primero en dejar una rese&#241;a.
-                      </p>
-                    </div>
-                  );
-                }
-                
-                return (
-                  <div className="space-y-0">
-                    {recentReviews.map((item) => (
+              <div className="flex items-center justify-between mb-8">
+                <h3 className="text-xs uppercase tracking-widest text-muted-foreground">
+                  Reseñas recientes on-chain
+                </h3>
+                <button
+                  onClick={loadOnChainData}
+                  disabled={loadingData}
+                  className="p-2 hover:bg-muted/50 rounded transition-colors"
+                  title="Actualizar datos"
+                >
+                  <RefreshCw className={`w-4 h-4 ${loadingData ? "animate-spin" : ""}`} />
+                </button>
+              </div>
+              {loadingData ? (
+                <div className="py-12 text-center">
+                  <Loader2 className="w-6 h-6 animate-spin mx-auto text-muted-foreground" />
+                  <p className="text-muted-foreground text-sm mt-3">Cargando reseñas...</p>
+                </div>
+              ) : recentReviews.length === 0 ? (
+                <div className="py-12 text-center">
+                  <p className="text-muted-foreground text-sm">
+                    Aun no hay reseñas on-chain.
+                  </p>
+                  <p className="text-muted-foreground/60 text-xs mt-2">
+                    Conecta tu wallet y se el primero en dejar una reseña.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-0">
+                  {recentReviews.map((review) => {
+                    const wine = winesData.find(w => w.wine_id === review.wine_id);
+                    if (!wine) return null;
+                    return (
                       <article
-                        key={item.tx_hash}
+                        key={review.tx_hash}
                         className="py-6 border-b border-border last:border-b-0 hover:bg-muted/30 transition-colors -mx-4 px-4"
                       >
                         <div className="flex items-start gap-3 mb-2">
                           <Wine className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
                           <div>
                             <h4 className="font-serif text-lg text-foreground">
-                              {item.wine_name}
+                              {wine.name}
                             </h4>
-                            <span className="text-xs text-muted-foreground/70">{item.wine_region}</span>
+                            <span className="text-xs text-muted-foreground/70">{wine.winery} - {wine.region}</span>
                           </div>
                         </div>
                         <p className="text-sm text-muted-foreground leading-relaxed mb-4 pl-7">
-                          {item.ia_notes}
+                          {review.ia_notes}
                         </p>
                         <div className="flex items-center justify-between pl-7">
                           <div className="flex items-center gap-1 text-sm text-foreground">
                             <Star className="w-3.5 h-3.5 fill-primary text-primary" />
-                            <span className="font-medium">{item.score.toFixed(1)}</span>
+                            <span className="font-medium">{review.score}</span>
                             <span className="text-muted-foreground">/ 5.0</span>
                           </div>
                           <div className="inline-flex items-center gap-1.5 text-xs text-muted-foreground/70">
                             <CheckCircle className="w-3 h-3 text-primary" />
                             <a
-                              href={item.stellar_expert_url}
+                              href={`https://stellar.expert/explorer/testnet/tx/${review.tx_hash}`}
                               target="_blank"
                               rel="noopener noreferrer"
                               className="inline-flex items-center gap-1 font-mono hover:text-foreground transition-colors"
                             >
-                              {formatTxHash(item.tx_hash)}
+                              {formatTxHash(review.tx_hash)}
                               <ExternalLink className="w-3 h-3" />
                             </a>
                           </div>
                         </div>
                       </article>
-                    ))}
-                  </div>
-                );
-              })()}
+                    );
+                  })}
+                </div>
+              )}
             </AnimatedSection>
           </div>
         </div>
@@ -715,95 +692,110 @@ export default function HomePage() {
               El Muro On-Chain
             </h2>
             <p className="text-muted-foreground max-w-lg mx-auto">
-              Resenas inmutables verificadas por IA. El contraste entre lo que decis y lo que el sommelier detecta.
+              Reseñas inmutables verificadas por IA. El contraste entre lo que decís y lo que el sommelier detecta.
             </p>
           </div>
         </AnimatedSection>
         
         <div className="max-w-4xl mx-auto">
-          {(() => {
-            const winesWithReviews = getWinesWithReviews();
-            
-            if (winesWithReviews.length === 0) {
-              return (
-                <div className="py-16 text-center">
-                  <Wine className="w-12 h-12 text-muted-foreground/30 mx-auto mb-4" />
-                  <p className="text-muted-foreground">
-                    No hay reseñas on-chain aun.
-                  </p>
-                  <p className="text-muted-foreground/60 text-sm mt-2">
-                    Los vinos apareceran aqui cuando alguien deje una rese&#241;a.
-                  </p>
-                </div>
-              );
-            }
-            
-            return winesWithReviews.map((wine, index) => {
-              const reviews = getWineReviews(wine.wine_id);
-              const avgScore = wine.on_chain_stats!.average;
+          {loadingData ? (
+            <div className="py-16 text-center">
+              <Loader2 className="w-8 h-8 animate-spin mx-auto text-muted-foreground" />
+              <p className="text-muted-foreground text-sm mt-3">Cargando datos on-chain...</p>
+            </div>
+          ) : recentReviews.length === 0 ? (
+            <div className="py-16 text-center">
+              <Wine className="w-12 h-12 text-muted-foreground/30 mx-auto mb-4" />
+              <p className="text-muted-foreground">
+                No hay reseñas on-chain aun.
+              </p>
+              <p className="text-muted-foreground/60 text-sm mt-2">
+                Los vinos aparecerán aquí cuando alguien deje una reseña.
+              </p>
+            </div>
+          ) : (
+            (() => {
+              const wineIdsWithReviews = [...new Set(recentReviews.map(r => r.wine_id))];
+              const winesWithReviews = wineIdsWithReviews
+                .map(id => winesData.find(w => w.wine_id === id))
+                .filter((w): w is WineData => w !== undefined)
+                .map(wine => {
+                  const stats = wineStats.get(wine.wine_id);
+                  return {
+                    ...wine,
+                    stats,
+                  };
+                })
+                .filter(w => w.stats && w.stats.reviewCount > 0)
+                .sort((a, b) => (b.stats?.average || 0) - (a.stats?.average || 0));
               
-              return (
-                <AnimatedSection 
-                  key={wine.wine_id} 
-                  animation="fade-up" 
-                  delay={`delay-${(index + 1) * 100}`}
-                >
-                  <article className="py-10 border-b border-border group">
-                    <div className="flex items-start justify-between mb-8">
-                      <div>
-                        <h3 className="font-serif text-2xl md:text-3xl text-foreground group-hover:text-primary transition-colors">
-                          {wine.name}
-                        </h3>
-                        <div className="flex items-center gap-3 mt-2">
-                          <span className="text-xs uppercase tracking-widest text-primary/70">{wine.winery}</span>
-                          <span className="text-xs text-muted-foreground/60">|</span>
-                          <span className="text-xs text-muted-foreground">{wine.region}</span>
-                          <span className="text-xs text-muted-foreground/60">|</span>
-                          <span className="text-xs text-muted-foreground">{wine.grapes.join(", ")}</span>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Star className="w-5 h-5 fill-primary text-primary" />
-                        <span className="text-2xl font-serif text-foreground">{avgScore.toFixed(1)}</span>
-                        <span className="text-sm text-muted-foreground">/ 5.0</span>
-                      </div>
-                    </div>
-                    
-                    {reviews.map((review, rIndex) => (
-                      <div key={review.tx_hash} className={rIndex > 0 ? "mt-6 pt-6 border-t border-border/50" : ""}>
-                        <div className="p-6 bg-background rounded-sm border-l-2 border-primary">
-                          <div className="flex items-center justify-between mb-3">
-                            <span className="text-xs uppercase tracking-widest text-primary/70">
-                              Analisis Sommelier IA
-                            </span>
-                            <div className="flex items-center gap-2 text-xs text-muted-foreground/60">
-                              <span className="font-mono">{formatTxHash(review.tx_hash)}</span>
-                              <a
-                                href={review.stellar_expert_url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="inline-flex items-center gap-1 hover:text-foreground transition-colors"
-                              >
-                                <ExternalLink className="w-3 h-3" />
-                              </a>
-                            </div>
+              return winesWithReviews.map((wine, index) => {
+                const wineReviews = recentReviews.filter(r => r.wine_id === wine.wine_id);
+                const stats = wine.stats!;
+                
+                return (
+                  <AnimatedSection 
+                    key={wine.wine_id} 
+                    animation="fade-up" 
+                    delay={`delay-${(index + 1) * 100}`}
+                  >
+                    <article className="py-10 border-b border-border group">
+                      <div className="flex items-start justify-between mb-8">
+                        <div>
+                          <h3 className="font-serif text-2xl md:text-3xl text-foreground group-hover:text-primary transition-colors">
+                            {wine.name}
+                          </h3>
+                          <div className="flex items-center gap-3 mt-2">
+                            <span className="text-xs uppercase tracking-widest text-primary/70">{wine.winery}</span>
+                            <span className="text-xs text-muted-foreground/60">|</span>
+                            <span className="text-xs text-muted-foreground">{wine.region}</span>
+                            <span className="text-xs text-muted-foreground/60">|</span>
+                            <span className="text-xs text-muted-foreground">{wine.grapes.join(", ")}</span>
                           </div>
-                          <p className="text-sm text-foreground leading-relaxed">
-                            {review.ia_notes}
-                          </p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Star className="w-5 h-5 fill-primary text-primary" />
+                          <span className="text-2xl font-serif text-foreground">{stats.average.toFixed(1)}</span>
+                          <span className="text-sm text-muted-foreground">/ 5.0</span>
                         </div>
                       </div>
-                    ))}
-                    
-                    <div className="mt-4 flex items-center gap-2 text-xs text-muted-foreground/60">
-                      <CheckCircle className="w-3 h-3 text-primary" />
-                      <span>{wine.on_chain_stats!.review_count} rese&#241;a{wine.on_chain_stats!.review_count !== 1 ? "s" : ""} verificada{wine.on_chain_stats!.review_count !== 1 ? "s" : ""}</span>
-                    </div>
-                  </article>
-                </AnimatedSection>
-              );
-            });
-          })()}
+                      
+                      {wineReviews.map((review, rIndex) => (
+                        <div key={`${review.tx_hash}-${rIndex}`} className={rIndex > 0 ? "mt-6 pt-6 border-t border-border/50" : ""}>
+                          <div className="p-6 bg-background rounded-sm border-l-2 border-primary">
+                            <div className="flex items-center justify-between mb-3">
+                              <span className="text-xs uppercase tracking-widest text-primary/70">
+                                Analisis Sommelier IA
+                              </span>
+                              <div className="flex items-center gap-2 text-xs text-muted-foreground/60">
+                                <span className="font-mono">{formatTxHash(review.tx_hash)}</span>
+                                <a
+                                  href={`https://stellar.expert/explorer/testnet/tx/${review.tx_hash}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-1 hover:text-foreground transition-colors"
+                                >
+                                  <ExternalLink className="w-3 h-3" />
+                                </a>
+                              </div>
+                            </div>
+                            <p className="text-sm text-foreground leading-relaxed">
+                              {review.ia_notes}
+                            </p>
+                          </div>
+                        </div>
+                      ))}
+                      
+                      <div className="mt-4 flex items-center gap-2 text-xs text-muted-foreground/60">
+                        <CheckCircle className="w-3 h-3 text-primary" />
+                        <span>{stats.reviewCount} reseña{stats.reviewCount !== 1 ? "s" : ""} verificada{stats.reviewCount !== 1 ? "s" : ""}</span>
+                      </div>
+                    </article>
+                  </AnimatedSection>
+                );
+              });
+            })()
+          )}
         </div>
       </section>
 
@@ -822,126 +814,187 @@ export default function HomePage() {
         </AnimatedSection>
         
         <div className="max-w-2xl mx-auto">
-          {(() => {
-            const leaderboardData = getLeaderboard();
-            
-            if (leaderboardData.length === 0) {
+          {loadingData ? (
+            <div className="py-16 text-center">
+              <Loader2 className="w-8 h-8 animate-spin mx-auto text-muted-foreground" />
+              <p className="text-muted-foreground text-sm mt-3">Cargando ranking...</p>
+            </div>
+          ) : wineStats.size === 0 ? (
+            <div className="py-16 text-center">
+              <p className="text-muted-foreground">
+                No hay rankings disponibles.
+              </p>
+              <p className="text-muted-foreground/60 text-sm mt-2">
+                El ranking se genera automaticamente con las resenas on-chain.
+              </p>
+            </div>
+          ) : (
+            (() => {
+              const leaderboardData = Array.from(wineStats.entries())
+                .map(([wineId, stats]) => {
+                  const wine = winesData.find(w => w.wine_id === wineId);
+                  return wine ? { wineId, wine, stats, score: stats.average } : null;
+                })
+                .filter((item): item is { wineId: number; wine: WineData; stats: { totalScore: number; reviewCount: number; average: number }; score: number } => item !== null)
+                .sort((a, b) => b.score - a.score)
+                .map((item, index) => ({ rank: index + 1, ...item }));
+              
               return (
-                <div className="py-16 text-center">
-                  <p className="text-muted-foreground">
-                    No hay rankings disponibles.
-                  </p>
-                  <p className="text-muted-foreground/60 text-sm mt-2">
-                    El ranking se genera automaticamente con las rese&#241;as on-chain.
-                  </p>
-                </div>
-              );
-            }
-            
-            return (
-              <>
-                <div className="border-y border-border">
-                  <div className="hidden md:grid md:grid-cols-[56px_1.8fr_1fr_0.8fr_0.8fr] gap-4 px-4 py-4 text-[11px] uppercase tracking-[0.24em] text-muted-foreground/80 border-b border-border">
-                    <span>#</span>
-                    <span>Vino</span>
-                    <span>Region</span>
-                    <span className="text-right">Score</span>
-                    <span className="text-right">Reviews</span>
-                  </div>
+                <>
+                  <div className="border-y border-border">
+                    <div className="hidden md:grid md:grid-cols-[56px_1.8fr_1fr_0.8fr_0.8fr] gap-4 px-4 py-4 text-[11px] uppercase tracking-[0.24em] text-muted-foreground/80 border-b border-border">
+                      <span>#</span>
+                      <span>Vino</span>
+                      <span>Region</span>
+                      <span className="text-right">Score</span>
+                      <span className="text-right">Reviews</span>
+                    </div>
 
-                  {leaderboardData.map((item, index) => (
-                    <AnimatedSection
-                      key={item.wine.wine_id}
-                      animation="fade-up"
-                      delay={`delay-${(index + 1) * 100}`}
-                    >
-                      <article
-                        className={`grid grid-cols-[44px_1fr_auto] md:grid-cols-[56px_1.8fr_1fr_0.8fr_0.8fr] gap-4 items-center px-4 py-6 border-b border-border/80 transition-colors hover:bg-muted/20 ${
-                          item.rank === 1 ? "bg-muted/25" : ""
-                        }`}
+                    {leaderboardData.map((item, index) => (
+                      <AnimatedSection
+                        key={item.wineId}
+                        animation="fade-up"
+                        delay={`delay-${(index + 1) * 100}`}
                       >
-                        <span
-                          className={`font-serif leading-none ${
-                            item.rank === 1 ? "text-5xl text-[#722F37]" : "text-4xl text-muted-foreground/45"
+                        <article
+                          className={`grid grid-cols-[44px_1fr_auto] md:grid-cols-[56px_1.8fr_1fr_0.8fr_0.8fr] gap-4 items-center px-4 py-6 border-b border-border/80 transition-colors hover:bg-muted/20 ${
+                            item.rank === 1 ? "bg-muted/25" : ""
                           }`}
                         >
-                          {item.rank}
-                        </span>
+                          <span
+                            className={`font-serif leading-none ${
+                              item.rank === 1 ? "text-5xl text-[#722F37]" : "text-4xl text-muted-foreground/45"
+                            }`}
+                          >
+                            {item.rank}
+                          </span>
 
-                        <div className="min-w-0">
-                          <h4 className={`font-serif truncate ${item.rank === 1 ? "text-4xl text-[#722F37]" : "text-3xl text-foreground"}`}>
-                            {item.wine.name}
-                          </h4>
-                          <p className="mt-1 text-[11px] uppercase tracking-[0.24em] text-primary/70">
-                            {item.wine.winery}
-                          </p>
-                        </div>
+                          <div className="min-w-0">
+                            <h4 className={`font-serif truncate ${item.rank === 1 ? "text-4xl text-[#722F37]" : "text-3xl text-foreground"}`}>
+                              {item.wine.name}
+                            </h4>
+                            <p className="mt-1 text-[11px] uppercase tracking-[0.24em] text-primary/70">
+                              {item.wine.winery}
+                            </p>
+                          </div>
 
-                        <p className="hidden md:block text-lg text-foreground/80 truncate">{item.wine.region}</p>
+                          <p className="hidden md:block text-lg text-foreground/80 truncate">{item.wine.region}</p>
 
-                        <div className="text-right">
-                          <p className="font-serif text-4xl text-foreground leading-none">{item.score.toFixed(1)}</p>
-                          <p className="text-xs text-muted-foreground mt-1">/5</p>
-                        </div>
+                          <div className="text-right">
+                            <p className="font-serif text-4xl text-foreground leading-none">{item.score.toFixed(1)}</p>
+                            <p className="text-xs text-muted-foreground mt-1">/5</p>
+                          </div>
 
-                        <div className="text-right">
-                          <p className="text-3xl font-serif text-foreground leading-none">{item.wine.on_chain_stats!.review_count}</p>
-                          <p className="text-xs text-muted-foreground mt-1">resenas</p>
-                        </div>
-                      </article>
-                    </AnimatedSection>
-                  ))}
-                </div>
-
-                <AnimatedSection animation="fade-in" delay="delay-600">
-                  <div className="mt-8 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs uppercase tracking-[0.18em] text-muted-foreground/70">
-                    <p>Puntajes auditados on-chain</p>
-                    <p>{winesData.filter(w => w.on_chain_stats === null).length} vinos sin resenas</p>
+                          <div className="text-right">
+                            <p className="text-3xl font-serif text-foreground leading-none">{item.stats.reviewCount}</p>
+                            <p className="text-xs text-muted-foreground mt-1">resenas</p>
+                          </div>
+                        </article>
+                      </AnimatedSection>
+                    ))}
                   </div>
-                </AnimatedSection>
-              </>
-            );
-          })()}
+
+                  <AnimatedSection animation="fade-in" delay="delay-600">
+                    <div className="mt-8 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs uppercase tracking-[0.18em] text-muted-foreground/70">
+                      <p>Puntajes auditados on-chain</p>
+                      <p>{wineStats.size} vino{wineStats.size !== 1 ? "s" : ""} con resenas</p>
+                    </div>
+                  </AnimatedSection>
+                </>
+              );
+            })()
+          )}
         </div>
       </section>
 
       {/* Footer */}
-      <footer className="px-6 py-16 md:px-12 lg:px-24 border-t border-border">
-        <AnimatedSection animation="fade-up">
-          <div className="flex flex-col md:flex-row items-center justify-between gap-6">
-            <div className="flex flex-col items-center md:items-start">
-              <span className="font-serif text-xl italic text-foreground">
-                Cero Chamuyo
-              </span>
-              <span className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground mt-1">
-                vino sin versos
-              </span>
-            </div>
-            <div className="flex flex-col items-center md:items-end gap-2">
-              <p className="text-xs text-muted-foreground text-center md:text-right">
-                Resenas inmutables en Stellar Blockchain
-              </p>
-              <div className="flex items-center gap-4 text-xs">
-                <a
-                  href="https://x.com/kl0ren"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-muted-foreground hover:text-foreground transition-colors"
+      <footer className="relative border-t border-border">
+        <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/25 to-transparent" aria-hidden />
+        <div className="bg-muted/25 px-6 py-14 md:px-12 lg:px-24">
+          <AnimatedSection animation="fade-up">
+            <div className="max-w-6xl mx-auto">
+              <div className="grid gap-12 md:grid-cols-12 md:gap-10 lg:gap-14">
+                <div className="md:col-span-5 text-center md:text-left">
+                  <span className="font-serif text-2xl italic tracking-tight text-foreground">
+                    Cero Chamuyo
+                  </span>
+                  <p className="text-[10px] uppercase tracking-[0.28em] text-muted-foreground mt-2">
+                    vino sin versos
+                  </p>
+                  <p className="mt-5 text-sm text-muted-foreground leading-relaxed max-w-sm mx-auto md:mx-0">
+                    Reseñas de vino auditadas por IA e inmutables en Stellar. Sin chamuyo: solo lo que probaste, sellado on-chain.
+                  </p>
+                </div>
+
+                <nav
+                  className="md:col-span-3 flex flex-col items-center md:items-start gap-3"
+                  aria-label="Pie de página"
                 >
-                  X @kl0ren
-                </a>
-                <a
-                  href="https://github.com/Klorenn"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-muted-foreground hover:text-foreground transition-colors"
-                >
-                  GitHub @Klorenn
-                </a>
+                  <span className="text-[10px] uppercase tracking-[0.22em] text-muted-foreground/80">
+                    Secciones
+                  </span>
+                  <div className="flex flex-col gap-2.5 text-sm">
+                    <button
+                      type="button"
+                      onClick={() => scrollToSection("escribir")}
+                      className="text-muted-foreground hover:text-foreground transition-colors text-left"
+                    >
+                      Escribir reseña
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => scrollToSection("muro")}
+                      className="text-muted-foreground hover:text-foreground transition-colors text-left"
+                    >
+                      El Muro
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => scrollToSection("ranking")}
+                      className="text-muted-foreground hover:text-foreground transition-colors text-left"
+                    >
+                      Ranking
+                    </button>
+                  </div>
+                </nav>
+
+                <div className="md:col-span-4 flex flex-col items-center md:items-end gap-5 text-center md:text-right">
+                  <div>
+                    <p className="text-xs font-medium text-foreground/90">
+                      Stellar blockchain
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1.5 leading-relaxed max-w-[260px] md:ml-auto">
+                      Las reseñas quedan registradas de forma verificable; cada voto es trazable en la red.
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap items-center justify-center md:justify-end gap-x-5 gap-y-2 text-xs">
+                    <a
+                      href="https://x.com/kl0ren"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-muted-foreground hover:text-foreground transition-colors underline-offset-4 hover:underline"
+                    >
+                      X · @kl0ren
+                    </a>
+                    <a
+                      href="https://github.com/Klorenn"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-muted-foreground hover:text-foreground transition-colors underline-offset-4 hover:underline"
+                    >
+                      GitHub · @Klorenn
+                    </a>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-14 pt-8 border-t border-border/70 flex flex-col sm:flex-row items-center justify-between gap-4 text-[11px] text-muted-foreground/80">
+                <p>© {new Date().getFullYear()} Cero Chamuyo</p>
+                <p className="text-center sm:text-right">Mendoza · Argentina</p>
               </div>
             </div>
-          </div>
-        </AnimatedSection>
+          </AnimatedSection>
+        </div>
       </footer>
     </div>
   )

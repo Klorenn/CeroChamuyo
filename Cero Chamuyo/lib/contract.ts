@@ -6,6 +6,15 @@ export interface ReviewResult {
   stellarExpertUrl: string;
 }
 
+export interface OnChainReview {
+  wine_id: number;
+  score: number;
+  ia_notes: string;
+  tx_hash: string;
+  ledger: number;
+  timestamp: number;
+}
+
 export async function buildLeaveReviewTx(
   sourceAddress: string,
   wineId: number,
@@ -105,6 +114,79 @@ export async function getWineStats(wineId: number): Promise<{ totalScore: number
     return null;
   } catch {
     return null;
+  }
+}
+
+export async function getAllWineStats(wineIds: number[]): Promise<Map<number, { totalScore: number; reviewCount: number; average: number }>> {
+  const results = new Map<number, { totalScore: number; reviewCount: number; average: number }>();
+  
+  await Promise.all(wineIds.map(async (wineId) => {
+    const stats = await getWineStats(wineId);
+    if (stats && stats.reviewCount > 0) {
+      results.set(wineId, {
+        totalScore: stats.totalScore,
+        reviewCount: stats.reviewCount,
+        average: stats.totalScore / stats.reviewCount,
+      });
+    }
+  }));
+
+  return results;
+}
+
+export async function getRecentReviews(limit: number = 10): Promise<OnChainReview[]> {
+  try {
+    const eventsResponse = await rpc.getEvents({
+      startLedger: 1,
+      filters: [
+        {
+          type: "contract",
+          contractIds: [CONTRACT_ID],
+        },
+      ],
+    });
+
+    const reviews: OnChainReview[] = [];
+    
+    for (const event of eventsResponse.events) {
+      if (event.type === "contract" && event.ledger) {
+        const topics = event.topic;
+        
+        if (topics.length >= 3) {
+          const topic2 = topics[1]?.value()?.toString();
+          const topic3 = topics[2]?.value()?.toString();
+          
+          if (topic2 === "resena") {
+            const data = event.contractId ? event.data.value() : null;
+            
+            if (data && "vec" in data) {
+              const values = data.vec() || [];
+              
+              if (values.length >= 3) {
+                const wineId = Number(StellarSdk.scValToNative(values[0]));
+                const score = Number(StellarSdk.scValToNative(values[1]));
+                const iaNotes = StellarSdk.scValToNative(values[2]) as string;
+                
+                reviews.push({
+                  wine_id: wineId,
+                  score,
+                  ia_notes: iaNotes,
+                  tx_hash: event.id || "",
+                  ledger: event.ledger,
+                  timestamp: event.ledgerTimestamp || 0,
+                });
+              }
+            }
+          }
+        }
+      }
+    }
+
+    reviews.sort((a, b) => b.ledger - a.ledger);
+    return reviews.slice(0, limit);
+  } catch (error) {
+    console.error("Error fetching recent reviews:", error);
+    return [];
   }
 }
 
