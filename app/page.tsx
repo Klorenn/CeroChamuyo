@@ -192,36 +192,53 @@ export default function HomePage() {
   const loadOnChainData = useCallback(async () => {
     setLoadingData(true);
     try {
-      const storedReviews = loadReviewsFromStorage();
-      setRecentReviews(storedReviews);
-      
       const wineIds = winesData.map(w => w.wine_id);
-      const stats = await getAllWineStats(wineIds);
-      setWineStats(stats);
       
-      if (storedReviews.length > 0) {
-        const localStats = new Map<number, { totalScore: number; reviewCount: number; average: number }>();
-        storedReviews.forEach(r => {
-          const current = localStats.get(r.wine_id) || { totalScore: 0, reviewCount: 0, average: 0 };
-          localStats.set(r.wine_id, {
-            totalScore: current.totalScore + r.score,
-            reviewCount: current.reviewCount + 1,
-            average: 0,
-          });
+      const [onChainStats, onChainReviews] = await Promise.all([
+        getAllWineStats(wineIds),
+        getRecentReviews(50),
+      ]);
+      
+      setWineStats(onChainStats);
+      
+      if (onChainReviews.length > 0) {
+        const reviewsWithClientText = onChainReviews.map(r => {
+          const storedReviews = loadReviewsFromStorage();
+          const localMatch = storedReviews.find(sr => sr.tx_hash === r.tx_hash);
+          return {
+            ...r,
+            client_review: localMatch?.client_review || r.ia_notes,
+          };
         });
-        localStats.forEach((val, key) => {
-          val.average = val.totalScore / val.reviewCount;
-          localStats.set(key, val);
-        });
+        setRecentReviews(reviewsWithClientText);
+      } else {
+        const storedReviews = loadReviewsFromStorage();
+        setRecentReviews(storedReviews);
         
-        const mergedStats = new Map(wineStats);
-        localStats.forEach((val, key) => {
-          const existing = mergedStats.get(key);
-          if (!existing || existing.reviewCount < val.reviewCount) {
-            mergedStats.set(key, val);
-          }
-        });
-        setWineStats(mergedStats);
+        if (storedReviews.length > 0) {
+          const localStats = new Map<number, { totalScore: number; reviewCount: number; average: number }>();
+          storedReviews.forEach(r => {
+            const current = localStats.get(r.wine_id) || { totalScore: 0, reviewCount: 0, average: 0 };
+            localStats.set(r.wine_id, {
+              totalScore: current.totalScore + r.score,
+              reviewCount: current.reviewCount + 1,
+              average: 0,
+            });
+          });
+          localStats.forEach((val, key) => {
+            val.average = val.totalScore / val.reviewCount;
+            localStats.set(key, val);
+          });
+          
+          const mergedStats = new Map(onChainStats);
+          localStats.forEach((val, key) => {
+            const existing = mergedStats.get(key);
+            if (!existing || existing.reviewCount < val.reviewCount) {
+              mergedStats.set(key, val);
+            }
+          });
+          setWineStats(mergedStats);
+        }
       }
     } catch (error) {
       console.error("Error loading on-chain data:", error);

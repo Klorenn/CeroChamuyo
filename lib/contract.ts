@@ -134,10 +134,13 @@ export async function getAllWineStats(wineIds: number[]): Promise<Map<number, { 
   return results;
 }
 
-export async function getRecentReviews(limit: number = 10): Promise<OnChainReview[]> {
+export async function getRecentReviews(limit: number = 50): Promise<OnChainReview[]> {
   try {
+    const latestLedger = await rpc.getLatestLedger();
+    const startLedger = Math.max(1, latestLedger.sequence - 1000);
+    
     const eventsResponse = await rpc.getEvents({
-      startLedger: 1720000,
+      startLedger: startLedger.toString(),
       filters: [
         {
           type: "contract",
@@ -149,13 +152,11 @@ export async function getRecentReviews(limit: number = 10): Promise<OnChainRevie
     const reviews: OnChainReview[] = [];
     
     for (const event of eventsResponse.events) {
-      if (event.type !== "contract") continue;
-      
-      const topics = event.topic;
-      if (!topics || topics.length < 3) continue;
-      
       try {
-        const topic2Str = topics[1].toString();
+        const topics = event.topic;
+        if (!topics || topics.length < 2) continue;
+        
+        const topic2Str = topics[1]?.toString();
         if (topic2Str !== "resena") continue;
         
         const data = event.data;
@@ -174,13 +175,13 @@ export async function getRecentReviews(limit: number = 10): Promise<OnChainRevie
         const score = parseInt(StellarSdk.scValToNative(values[1]).toString(), 10);
         const iaNotes = StellarSdk.scValToNative(values[2]) as string;
         
-        if (isNaN(wineId) || isNaN(score)) continue;
+        if (isNaN(wineId) || isNaN(score) || wineId < 1 || wineId > 100) continue;
         
         reviews.push({
           wine_id: wineId,
           score,
           ia_notes: iaNotes,
-          tx_hash: event.id || event.transactionHash || "",
+          tx_hash: event.transactionHash || event.id || "",
           ledger: event.ledger || 0,
           timestamp: event.ledgerTimestamp || 0,
         });
@@ -193,7 +194,7 @@ export async function getRecentReviews(limit: number = 10): Promise<OnChainRevie
     reviews.sort((a, b) => b.ledger - a.ledger);
     return reviews.slice(0, limit);
   } catch (error) {
-    console.warn("Could not fetch events from RPC, using local state only:", error);
+    console.error("Error fetching events:", error);
     return [];
   }
 }
