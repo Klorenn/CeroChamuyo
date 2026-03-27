@@ -1,6 +1,6 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
-const genAI = new GoogleGenerativeAI(process.env.NEXT_PUBLIC_GEMINI_API_KEY || "");
+const API_KEY = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
 
 const clientCommentPrompt = `Clasifica la opinion del cliente en 3 palabras maximo.
 
@@ -16,7 +16,12 @@ reseña: "{review}"
 Responde SOLO con una de las opciones de arriba, sin explicacion:`;
 
 export async function analyzeWithAI(reviewText: string): Promise<string> {
+  if (!API_KEY) {
+    return generateSimpleComment(reviewText);
+  }
+
   try {
+    const genAI = new GoogleGenerativeAI(API_KEY);
     const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
     
     const prompt = clientCommentPrompt.replace("{review}", reviewText);
