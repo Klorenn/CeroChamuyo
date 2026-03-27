@@ -1,5 +1,3 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
-
 const API_KEY = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
 
 const clientCommentPrompt = `Clasifica la opinion del cliente en 3 palabras maximo.
@@ -21,14 +19,35 @@ export async function analyzeWithAI(reviewText: string): Promise<string> {
   }
 
   try {
-    const genAI = new GoogleGenerativeAI(API_KEY);
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-    
     const prompt = clientCommentPrompt.replace("{review}", reviewText);
     
-    const result = await model.generateContent(prompt);
-    const response = await result.response;
-    const comment = response.text().trim();
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${API_KEY}`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          contents: [{
+            parts: [{ text: prompt }]
+          }],
+          generationConfig: {
+            maxOutputTokens: 50,
+            temperature: 0.1,
+          }
+        }),
+      }
+    );
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      console.error("Gemini API error:", errorData);
+      return generateSimpleComment(reviewText);
+    }
+
+    const data = await response.json();
+    const comment = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
     
     if (comment && comment.length <= 30) {
       return comment;
@@ -36,7 +55,7 @@ export async function analyzeWithAI(reviewText: string): Promise<string> {
     
     return generateSimpleComment(reviewText);
   } catch (error) {
-    console.error("Error analyzing with Gemini:", error);
+    console.error("Error calling Gemini:", error);
     return generateSimpleComment(reviewText);
   }
 }
